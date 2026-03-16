@@ -4,9 +4,7 @@ import javafx.animation.PauseTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
-import javafx.collections.transformation.SortedList;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
@@ -14,8 +12,6 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 import javafx.util.Duration;
 import java.sql.*;
-import java.util.Optional;
-import java.util.regex.Pattern;
 
 public class Home {
 
@@ -25,9 +21,6 @@ public class Home {
     private ComboBox<String> courseCombo;
     private Slider marksSlider;
     private Label marksLabel, statusLabel;
-    private CheckBox filterHighAchievers, filterLowAchievers;
-    private ToggleGroup sortGroup;
-    private RadioButton sortByName, sortByMarks;
     private ObservableList<Student> studentList = FXCollections.observableArrayList();
     private Student selectedStudent = null;
     private Label countLabel;
@@ -40,28 +33,21 @@ public class Home {
 
     private void loadStudentsFromDatabase() {
         studentList.clear();
-        
-        // Only load students for the current user
         String sql = "SELECT * FROM students WHERE user_id = ? ORDER BY id DESC";
-        
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
             pstmt.setInt(1, Login.currentUserId);
             ResultSet rs = pstmt.executeQuery();
-            
             while (rs.next()) {
-                Student student = new Student(
+                studentList.add(new Student(
                     rs.getInt("id"),
                     rs.getInt("user_id"),
                     rs.getString("full_name"),
                     rs.getString("email"),
                     rs.getString("course"),
                     rs.getInt("marks")
-                );
-                studentList.add(student);
+                ));
             }
-            
         } catch (SQLException e) {
             showAlert("Database Error", "Failed to load students: " + e.getMessage());
         }
@@ -71,96 +57,44 @@ public class Home {
         BorderPane root = new BorderPane();
         root.getStyleClass().add("main-background");
 
-        // --- Top Section with Welcome and Menu ---
         VBox topSection = new VBox();
-        
-        // Welcome label
         welcomeLabel = new Label("Welcome, " + Login.currentUserName + "!");
         welcomeLabel.setStyle("-fx-text-fill: white; -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 10 20 0 20;");
-        
-        // Menu Bar
-        MenuBar menuBar = createMenuBar();
-        
-        topSection.getChildren().addAll(welcomeLabel, menuBar);
+        topSection.getChildren().addAll(welcomeLabel, createMenuBar());
         root.setTop(topSection);
 
-        // --- Main Content - Only Student Management ---
         VBox mainContent = createManagementContent();
-        root.setCenter(mainContent);
-
-        // --- Status Bar ---
+        ScrollPane scrollPane = new ScrollPane(mainContent);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setFitToHeight(true);
+        scrollPane.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+        
+        root.setCenter(scrollPane);
         root.setBottom(createStatusBar());
 
         return root;
     }
 
-    private MenuBar createMenuBar() {
-        MenuBar menuBar = new MenuBar();
-        menuBar.getStyleClass().add("glass-menubar");
-
-        // File Menu with Logout
-        Menu fileMenu = new Menu("File");
-        
-        MenuItem logoutItem = new MenuItem("Logout");
-        logoutItem.setOnAction(e -> {
-            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Logout");
-            alert.setHeaderText("Are you sure you want to logout?");
-            alert.setContentText("You will be returned to the login screen.");
-            
-            Optional<ButtonType> result = alert.showAndWait();
-            if (result.isPresent() && result.get() == ButtonType.OK) {
-                Login.currentUserId = -1;
-                Login.currentUserName = "";
-                app.showLogin();
-            }
-        });
-        
-        MenuItem exitItem = new MenuItem("Exit");
-        exitItem.setOnAction(e -> System.exit(0));
-        
-        fileMenu.getItems().addAll(logoutItem, new SeparatorMenuItem(), exitItem);
-
-        // Help Menu
-        Menu helpMenu = new Menu("Help");
-        MenuItem aboutItem = new MenuItem("About");
-        aboutItem.setOnAction(e -> {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle("About");
-            alert.setHeaderText("Student Management System");
-            alert.setContentText("Version 1.0\nDeveloped by Team\nAll Rights Reserved © 2024");
-            alert.showAndWait();
-        });
-        helpMenu.getItems().add(aboutItem);
-
-        menuBar.getMenus().addAll(fileMenu, helpMenu);
-        
-        return menuBar;
-    }
-
     private VBox createManagementContent() {
-        VBox content = new VBox(20);
-        content.setPadding(new Insets(20));
-        content.setStyle("-fx-background-color: transparent;");
+        VBox container = new VBox(20);
+        container.setPadding(new Insets(20));
+        container.setAlignment(Pos.TOP_CENTER);
 
-        // Main split layout
         HBox mainLayout = new HBox(20);
         mainLayout.setAlignment(Pos.TOP_CENTER);
-        HBox.setHgrow(mainLayout, Priority.ALWAYS);
 
-        // Left Panel - Input Section
         VBox inputSection = createInputSection();
+        inputSection.setMinWidth(350);
         inputSection.setPrefWidth(350);
         
-        // Right Panel - Display Section
         VBox displaySection = createDisplaySection();
         HBox.setHgrow(displaySection, Priority.ALWAYS);
-        displaySection.setPrefWidth(700);
 
         mainLayout.getChildren().addAll(inputSection, displaySection);
-        content.getChildren().add(mainLayout);
+        container.getChildren().add(mainLayout);
+        VBox.setVgrow(mainLayout, Priority.ALWAYS);
 
-        return content;
+        return container;
     }
 
     private VBox createInputSection() {
@@ -171,90 +105,45 @@ public class Home {
         Label titleLabel = new Label("Student Details");
         titleLabel.getStyleClass().add("section-title");
 
-        // Name field
-        Label nameLabel = new Label("Full Name:");
-        nameLabel.getStyleClass().add("form-label");
-        nameField = new TextField();
-        nameField.setPromptText("Enter student name");
-        nameField.getStyleClass().add("text-field");
-
-        // Email field
-        Label emailLabel = new Label("Email Address:");
-        emailLabel.getStyleClass().add("form-label");
-        emailField = new TextField();
-        emailField.setPromptText("Enter email address");
-        emailField.getStyleClass().add("text-field");
-
-        // Course ComboBox
-        Label courseLabel = new Label("Course:");
-        courseLabel.getStyleClass().add("form-label");
-        courseCombo = new ComboBox<>();
-        courseCombo.setItems(FXCollections.observableArrayList(
-            "Computer Science (CSE)",
-            "Information Technology (IT)",
-            "Business IT (BIT)",
-            "Software Engineering",
-            "Data Science",
-            "Cybersecurity"
+        nameField = new TextField(); nameField.setPromptText("Enter full name");
+        emailField = new TextField(); emailField.setPromptText("Enter email");
+        
+        courseCombo = new ComboBox<>(FXCollections.observableArrayList(
+            "Computer Science (CSE)", "Information Technology (IT)", "Software Engineering", "Data Science", "Cybersecurity"
         ));
-        courseCombo.setPromptText("Select Course");
         courseCombo.setMaxWidth(Double.MAX_VALUE);
-        courseCombo.getStyleClass().add("combo-box");
 
-        // Marks Slider
-        Label marksTitleLabel = new Label("Marks:");
-        marksTitleLabel.getStyleClass().add("form-label");
-        
         marksSlider = new Slider(0, 100, 50);
-        marksSlider.setShowTickLabels(true);
-        marksSlider.setShowTickMarks(true);
-        marksSlider.setMajorTickUnit(20);
-        marksSlider.setMinorTickCount(5);
-        marksSlider.setBlockIncrement(5);
-        marksSlider.getStyleClass().add("slider");
-        
         marksLabel = new Label("50");
-        marksLabel.getStyleClass().add("marks-label");
-        marksSlider.valueProperty().addListener((obs, oldVal, newVal) -> 
-            marksLabel.setText(String.valueOf(newVal.intValue()))
-        );
-
+        marksSlider.valueProperty().addListener((obs, old, newVal) -> marksLabel.setText(String.valueOf(newVal.intValue())));
         HBox marksBox = new HBox(10, marksSlider, marksLabel);
-        marksBox.setAlignment(Pos.CENTER_LEFT);
 
-        // Buttons - Add, Update, Delete only
         Button addBtn = new Button("➕ ADD STUDENT");
-        addBtn.getStyleClass().add("primary-button");
         addBtn.setMaxWidth(Double.MAX_VALUE);
+        addBtn.getStyleClass().add("primary-button");
         addBtn.setOnAction(e -> addStudent());
 
-        HBox actionButtons = new HBox(10);
-        actionButtons.setAlignment(Pos.CENTER);
-        
         Button updateBtn = new Button("✏️ UPDATE");
         updateBtn.getStyleClass().add("update-button");
-        updateBtn.setMaxWidth(Double.MAX_VALUE);
-        updateBtn.setOnAction(e -> updateStudent());
-        
         Button deleteBtn = new Button("🗑️ DELETE");
         deleteBtn.getStyleClass().add("delete-button");
-        deleteBtn.setMaxWidth(Double.MAX_VALUE);
-        deleteBtn.setOnAction(e -> deleteStudent());
         
+        updateBtn.setMaxWidth(Double.MAX_VALUE);
+        deleteBtn.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(updateBtn, Priority.ALWAYS);
         HBox.setHgrow(deleteBtn, Priority.ALWAYS);
-        actionButtons.getChildren().addAll(updateBtn, deleteBtn);
+        HBox actionButtons = new HBox(10, updateBtn, deleteBtn);
+        
+        updateBtn.setOnAction(e -> updateStudent());
+        deleteBtn.setOnAction(e -> deleteStudent());
 
         inputSection.getChildren().addAll(
-            titleLabel,
-            new Separator(),
-            nameLabel, nameField,
-            emailLabel, emailField,
-            courseLabel, courseCombo,
-            marksTitleLabel, marksBox,
-            new Separator(),
-            addBtn,
-            actionButtons
+            titleLabel, new Separator(),
+            new Label("Full Name:"), nameField,
+            new Label("Email:"), emailField,
+            new Label("Course:"), courseCombo,
+            new Label("Marks:"), marksBox,
+            new Separator(), addBtn, actionButtons
         );
 
         return inputSection;
@@ -265,261 +154,53 @@ public class Home {
         displaySection.setPadding(new Insets(25));
         displaySection.getStyleClass().add("glass-card");
 
-        // Search Bar
-        HBox searchBox = new HBox(10);
-        searchBox.setAlignment(Pos.CENTER_LEFT);
-        
         searchField = new TextField();
-        searchField.setPromptText("🔍 Search by name, email, or course...");
-        searchField.getStyleClass().add("text-field");
+        searchField.setPromptText("🔍 Search...");
         HBox.setHgrow(searchField, Priority.ALWAYS);
         
         Button searchBtn = new Button("SEARCH");
-        searchBtn.getStyleClass().add("search-button");
         searchBtn.setOnAction(e -> filterTable());
-        
-        Button showAllBtn = new Button("SHOW ALL");
-        showAllBtn.getStyleClass().add("show-all-button");
-        showAllBtn.setOnAction(e -> {
-            searchField.clear();
-            filterHighAchievers.setSelected(false);
-            filterLowAchievers.setSelected(false);
-            filterTable();
-        });
+        Button allBtn = new Button("SHOW ALL");
+        allBtn.setOnAction(e -> { searchField.clear(); filterTable(); });
 
-        searchBox.getChildren().addAll(searchField, searchBtn, showAllBtn);
+        HBox searchBox = new HBox(10, searchField, searchBtn, allBtn);
 
-        // Filter Panel
-        VBox filterPanel = new VBox(10);
-        filterPanel.getStyleClass().add("filter-panel");
-
-        Label filterLabel = new Label("Filters & Sorting:");
-        filterLabel.getStyleClass().add("filter-label");
-
-        HBox filterBox = new HBox(20);
-        filterBox.setAlignment(Pos.CENTER_LEFT);
-
-        // CheckBox filters
-        filterHighAchievers = new CheckBox("High Achievers (≥75)");
-        filterHighAchievers.getStyleClass().add("high-filter");
-        filterHighAchievers.setOnAction(e -> filterTable());
-
-        filterLowAchievers = new CheckBox("Low Achievers (<40)");
-        filterLowAchievers.getStyleClass().add("low-filter");
-        filterLowAchievers.setOnAction(e -> filterTable());
-
-        // Radio buttons for sorting
-        sortGroup = new ToggleGroup();
-        
-        sortByName = new RadioButton("Sort by Name");
-        sortByName.setToggleGroup(sortGroup);
-        sortByName.setSelected(true);
-        sortByName.getStyleClass().add("sort-radio");
-        sortByName.setOnAction(e -> sortTable());
-        
-        sortByMarks = new RadioButton("Sort by Marks");
-        sortByMarks.setToggleGroup(sortGroup);
-        sortByMarks.getStyleClass().add("sort-radio");
-        sortByMarks.setOnAction(e -> sortTable());
-
-        VBox sortBox = new VBox(5);
-        sortBox.getChildren().addAll(sortByName, sortByMarks);
-        
-        filterBox.getChildren().addAll(filterHighAchievers, filterLowAchievers, new Separator(Orientation.VERTICAL), sortBox);
-        filterPanel.getChildren().addAll(filterLabel, filterBox);
-
-        // Table
         table = createTable();
-        
-        displaySection.getChildren().addAll(searchBox, filterPanel, table);
+        VBox.setVgrow(table, Priority.ALWAYS);
 
+        displaySection.getChildren().addAll(searchBox, table);
         return displaySection;
     }
 
+    @SuppressWarnings("unchecked")
     private TableView<Student> createTable() {
         TableView<Student> table = new TableView<>();
-        table.getStyleClass().add("table-view");
-        table.setPlaceholder(new Label("No students available. Add some students!"));
-
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        // Table Columns
         TableColumn<Student, Integer> colId = new TableColumn<>("ID");
         colId.setCellValueFactory(new PropertyValueFactory<>("id"));
-        colId.setPrefWidth(50);
-        colId.setStyle("-fx-alignment: CENTER;");
+        colId.setMaxWidth(50);
 
         TableColumn<Student, String> colName = new TableColumn<>("Name");
         colName.setCellValueFactory(new PropertyValueFactory<>("name"));
-        colName.setPrefWidth(150);
 
         TableColumn<Student, String> colEmail = new TableColumn<>("Email");
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
-        colEmail.setPrefWidth(180);
-
-        TableColumn<Student, String> colCourse = new TableColumn<>("Course");
-        colCourse.setCellValueFactory(new PropertyValueFactory<>("course"));
-        colCourse.setPrefWidth(150);
 
         TableColumn<Student, Integer> colMarks = new TableColumn<>("Marks");
         colMarks.setCellValueFactory(new PropertyValueFactory<>("marks"));
-        colMarks.setPrefWidth(70);
-        colMarks.setStyle("-fx-alignment: CENTER;");
-        
-        // Add grade column with string manipulation
-        TableColumn<Student, String> colGrade = new TableColumn<>("Grade");
-        colGrade.setCellValueFactory(cellData -> {
-            int marks = cellData.getValue().getMarks();
-            String grade = calculateGrade(marks);
-            return javafx.beans.binding.Bindings.createObjectBinding(() -> grade);
-        });
-        colGrade.setPrefWidth(70);
-        colGrade.setStyle("-fx-alignment: CENTER;");
 
-        table.getColumns().addAll(colId, colName, colEmail, colCourse, colMarks, colGrade);
-        
-        // Selection listener
-        table.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
-            selectedStudent = selected;
-            if (selected != null) {
-                populateFields(selected);
-            }
-        });
-
-        // Set data
+        table.getColumns().addAll(colId, colName, colEmail, colMarks);
         table.setItems(studentList);
         
+        table.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
+            selectedStudent = selected;
+            if (selected != null) populateFields(selected);
+        });
+
         return table;
     }
 
-    private HBox createStatusBar() {
-        HBox statusBar = new HBox(10);
-        statusBar.getStyleClass().add("status-bar");
-        statusBar.setAlignment(Pos.CENTER_LEFT);
-
-        statusLabel = new Label("Ready");
-        statusLabel.getStyleClass().add("status-label");
-        
-        countLabel = new Label("Total Students: " + studentList.size());
-        countLabel.getStyleClass().add("status-label");
-        
-        Label timeLabel = new Label(java.time.LocalDateTime.now().format(
-            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-        timeLabel.getStyleClass().add("status-label");
-        
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        statusBar.getChildren().addAll(statusLabel, spacer, countLabel, new Separator(Orientation.VERTICAL), timeLabel);
-        
-        // Update time every second
-        PauseTransition pause = new PauseTransition(Duration.seconds(1));
-        pause.setOnFinished(e -> {
-            timeLabel.setText(java.time.LocalDateTime.now().format(
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-            pause.play();
-        });
-        pause.play();
-        
-        return statusBar;
-    }
-
-    // Database Operations
-    private void saveStudentToDatabase(Student student) {
-        String sql = "INSERT INTO students (user_id, full_name, email, course, marks) VALUES (?, ?, ?, ?, ?)";
-        
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            
-            pstmt.setInt(1, Login.currentUserId);
-            pstmt.setString(2, student.getName());
-            pstmt.setString(3, student.getEmail());
-            pstmt.setString(4, student.getCourse());
-            pstmt.setInt(5, student.getMarks());
-            
-            int affectedRows = pstmt.executeUpdate();
-            
-            if (affectedRows > 0) {
-                try (ResultSet generatedKeys = pstmt.getGeneratedKeys()) {
-                    if (generatedKeys.next()) {
-                        student.setId(generatedKeys.getInt(1));
-                        student.setUserId(Login.currentUserId);
-                    }
-                }
-            }
-            
-        } catch (SQLException e) {
-            showAlert("Database Error", "Failed to save student: " + e.getMessage());
-        }
-    }
-
-    private void updateStudentInDatabase(Student student) {
-        String sql = "UPDATE students SET full_name = ?, email = ?, course = ?, marks = ? WHERE id = ? AND user_id = ?";
-        
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
-            pstmt.setString(1, student.getName());
-            pstmt.setString(2, student.getEmail());
-            pstmt.setString(3, student.getCourse());
-            pstmt.setInt(4, student.getMarks());
-            pstmt.setInt(5, student.getId());
-            pstmt.setInt(6, Login.currentUserId);
-            
-            pstmt.executeUpdate();
-            
-        } catch (SQLException e) {
-            showAlert("Database Error", "Failed to update student: " + e.getMessage());
-        }
-    }
-
-    private void deleteStudentFromDatabase(int studentId) {
-        String sql = "DELETE FROM students WHERE id = ? AND user_id = ?";
-        
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
-            pstmt.setInt(1, studentId);
-            pstmt.setInt(2, Login.currentUserId);
-            
-            pstmt.executeUpdate();
-            
-        } catch (SQLException e) {
-            showAlert("Database Error", "Failed to delete student: " + e.getMessage());
-        }
-    }
-
-    // String manipulation methods
-    private String calculateGrade(int marks) {
-        if (marks >= 90) return "A+";
-        else if (marks >= 80) return "A";
-        else if (marks >= 70) return "B";
-        else if (marks >= 60) return "C";
-        else if (marks >= 50) return "D";
-        else return "F";
-    }
-
-    private boolean validateEmail(String email) {
-        String emailRegex = "^[A-Za-z0-9+_.-]+@(.+)$";
-        Pattern pattern = Pattern.compile(emailRegex);
-        return pattern.matcher(email).matches();
-    }
-
-    private String capitalizeName(String name) {
-        if (name == null || name.isEmpty()) return name;
-        String[] words = name.trim().split("\\s+");
-        StringBuilder result = new StringBuilder();
-        for (String word : words) {
-            if (word.length() > 0) {
-                result.append(Character.toUpperCase(word.charAt(0)))
-                      .append(word.substring(1).toLowerCase())
-                      .append(" ");
-            }
-        }
-        return result.toString().trim();
-    }
-
-    // CRUD Operations
     private void addStudent() {
         if (validateInputs()) {
             String name = capitalizeName(nameField.getText());
@@ -533,10 +214,8 @@ public class Home {
             if (newStudent.getId() > 0) {
                 studentList.add(newStudent);
                 clearFields();
-                updateStatus("Student added successfully!");
+                updateStatus("Student added!");
                 updateStatistics();
-            } else {
-                showAlert("Error", "Failed to add student to database.");
             }
         }
     }
@@ -549,178 +228,143 @@ public class Home {
             selectedStudent.setMarks((int) marksSlider.getValue());
             
             updateStudentInDatabase(selectedStudent);
-            
             table.refresh();
             clearFields();
-            updateStatus("Student updated successfully!");
-            updateStatistics();
+            updateStatus("Student updated!");
         } else {
-            showAlert("No Selection", "Please select a student to update.");
+            showAlert("Selection Required", "Please select a student first.");
         }
     }
 
     private void deleteStudent() {
         if (selectedStudent != null) {
-            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-            confirm.setTitle("Confirm Delete");
-            confirm.setHeaderText("Delete Student");
-            confirm.setContentText("Are you sure you want to delete " + selectedStudent.getName() + "?");
-            
-            Optional<ButtonType> result = confirm.showAndWait();
-            if (result.isPresent() && result.get() == ButtonType.OK) {
-                deleteStudentFromDatabase(selectedStudent.getId());
-                studentList.remove(selectedStudent);
-                clearFields();
-                updateStatus("Student deleted successfully!");
-                updateStatistics();
-            }
-        } else {
-            showAlert("No Selection", "Please select a student to delete.");
+            deleteStudentFromDatabase(selectedStudent.getId());
+            studentList.remove(selectedStudent);
+            clearFields();
+            updateStatus("Student deleted!");
+            updateStatistics();
         }
+    }
+
+    private void saveStudentToDatabase(Student student) {
+        String sql = "INSERT INTO students (user_id, full_name, email, course, marks) VALUES (?, ?, ?, ?, ?)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            pstmt.setInt(1, Login.currentUserId);
+            pstmt.setString(2, student.getName());
+            pstmt.setString(3, student.getEmail());
+            pstmt.setString(4, student.getCourse());
+            pstmt.setInt(5, student.getMarks());
+            pstmt.executeUpdate();
+            ResultSet rs = pstmt.getGeneratedKeys();
+            if (rs.next()) student.setId(rs.getInt(1));
+        } catch (SQLException e) { showAlert("Error", e.getMessage()); }
+    }
+
+    private void updateStudentInDatabase(Student student) {
+        String sql = "UPDATE students SET full_name=?, email=?, course=?, marks=? WHERE id=? AND user_id=?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, student.getName());
+            pstmt.setString(2, student.getEmail());
+            pstmt.setString(3, student.getCourse());
+            pstmt.setInt(4, student.getMarks());
+            pstmt.setInt(5, student.getId());
+            pstmt.setInt(6, Login.currentUserId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { showAlert("Error", e.getMessage()); }
+    }
+
+    private void deleteStudentFromDatabase(int id) {
+        String sql = "DELETE FROM students WHERE id=? AND user_id=?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, id);
+            pstmt.setInt(2, Login.currentUserId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { showAlert("Error", e.getMessage()); }
     }
 
     private void filterTable() {
         FilteredList<Student> filteredData = new FilteredList<>(studentList, p -> true);
-        
-        filteredData.setPredicate(student -> {
-            // Search filter
-            if (!searchField.getText().isEmpty()) {
-                String searchText = searchField.getText().toLowerCase();
-                if (!student.getName().toLowerCase().contains(searchText) &&
-                    !student.getEmail().toLowerCase().contains(searchText) &&
-                    !student.getCourse().toLowerCase().contains(searchText)) {
-                    return false;
-                }
-            }
-            
-            // High achievers filter
-            if (filterHighAchievers.isSelected() && student.getMarks() < 75) {
-                return false;
-            }
-            
-            // Low achievers filter
-            if (filterLowAchievers.isSelected() && student.getMarks() >= 40) {
-                return false;
-            }
-            
-            return true;
+        filteredData.setPredicate(s -> {
+            String search = searchField.getText().toLowerCase();
+            return search.isEmpty() || s.getName().toLowerCase().contains(search) || s.getEmail().toLowerCase().contains(search);
         });
-        
-        sortTable(filteredData);
-    }
-
-    private void sortTable() {
-        FilteredList<Student> filteredData = new FilteredList<>(studentList, p -> true);
-        filterTable();
-    }
-
-    private void sortTable(FilteredList<Student> filteredData) {
-        SortedList<Student> sortedData = new SortedList<>(filteredData);
-        
-        if (sortByName.isSelected()) {
-            sortedData.setComparator((a, b) -> a.getName().compareTo(b.getName()));
-        } else if (sortByMarks.isSelected()) {
-            sortedData.setComparator((a, b) -> Integer.compare(b.getMarks(), a.getMarks()));
-        }
-        
-        table.setItems(sortedData);
+        table.setItems(filteredData);
     }
 
     private boolean validateInputs() {
-        StringBuilder errors = new StringBuilder();
-
-        if (nameField.getText().trim().isEmpty()) {
-            errors.append("• Name is required\n");
-        } else if (nameField.getText().length() < 2) {
-            errors.append("• Name must be at least 2 characters\n");
-        }
-
-        if (emailField.getText().trim().isEmpty()) {
-            errors.append("• Email is required\n");
-        } else if (!validateEmail(emailField.getText())) {
-            errors.append("• Invalid email format\n");
-        }
-
-        if (courseCombo.getValue() == null) {
-            errors.append("• Please select a course\n");
-        }
-
-        if (errors.length() > 0) {
-            showAlert("Validation Error", errors.toString());
+        if (nameField.getText().isEmpty() || emailField.getText().isEmpty() || courseCombo.getValue() == null) {
+            showAlert("Validation Error", "All fields are required!");
             return false;
         }
-
         return true;
     }
 
-    private void populateFields(Student student) {
-        nameField.setText(student.getName());
-        emailField.setText(student.getEmail());
-        courseCombo.setValue(student.getCourse());
-        marksSlider.setValue(student.getMarks());
+    private void populateFields(Student s) {
+        nameField.setText(s.getName());
+        emailField.setText(s.getEmail());
+        courseCombo.setValue(s.getCourse());
+        marksSlider.setValue(s.getMarks());
     }
 
     private void clearFields() {
-        nameField.clear();
-        emailField.clear();
-        courseCombo.setValue(null);
-        marksSlider.setValue(50);
-        selectedStudent = null;
-        table.getSelectionModel().clearSelection();
+        nameField.clear(); emailField.clear(); courseCombo.setValue(null); marksSlider.setValue(50); selectedStudent = null;
     }
 
     private void showAlert(String title, String content) {
-        Alert alert = new Alert(Alert.AlertType.WARNING);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title); alert.setHeaderText(null); alert.setContentText(content); alert.showAndWait();
     }
 
-    private void updateStatus(String message) {
-        statusLabel.setText(message);
-        
-        // Auto-clear status after 3 seconds
-        PauseTransition pause = new PauseTransition(Duration.seconds(3));
-        pause.setOnFinished(e -> statusLabel.setText("Ready"));
-        pause.play();
+    private void updateStatus(String msg) {
+        statusLabel.setText(msg);
+        PauseTransition p = new PauseTransition(Duration.seconds(3));
+        p.setOnFinished(e -> statusLabel.setText("Ready"));
+        p.play();
     }
 
-    private void updateStatistics() {
-        countLabel.setText("Total Students: " + studentList.size());
+    private void updateStatistics() { countLabel.setText("Total: " + studentList.size()); }
+
+    private MenuBar createMenuBar() { 
+        MenuBar mb = new MenuBar(); 
+        Menu file = new Menu("File");
+        MenuItem logout = new MenuItem("Logout");
+        logout.setOnAction(e -> app.showLogin());
+        file.getItems().add(logout);
+        mb.getMenus().add(file);
+        return mb; 
     }
 
-    // Student Model Class with ID and user_id
+    private HBox createStatusBar() {
+        HBox sb = new HBox(10); sb.setPadding(new Insets(5));
+        statusLabel = new Label("Ready");
+        countLabel = new Label("Total: " + studentList.size());
+        sb.getChildren().addAll(statusLabel, new Pane(), countLabel);
+        HBox.setHgrow(sb.getChildren().get(1), Priority.ALWAYS);
+        return sb;
+    }
+
+    private String capitalizeName(String name) {
+        if (name == null || name.isEmpty()) return name;
+        return name.substring(0, 1).toUpperCase() + name.substring(1);
+    }
+
     public static class Student {
-        private int id;
-        private int userId;
+        private int id, marks;
         private String name, email, course;
-        private int marks;
-
         public Student(int id, int userId, String name, String email, String course, int marks) {
-            this.id = id;
-            this.userId = userId;
-            this.name = name;
-            this.email = email;
-            this.course = course;
-            this.marks = marks;
+            this.id = id; this.name = name; this.email = email; this.course = course; this.marks = marks;
         }
-
         public int getId() { return id; }
         public void setId(int id) { this.id = id; }
-        
-        public int getUserId() { return userId; }
-        public void setUserId(int userId) { this.userId = userId; }
-        
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
-        
         public String getEmail() { return email; }
         public void setEmail(String email) { this.email = email; }
-        
         public String getCourse() { return course; }
         public void setCourse(String course) { this.course = course; }
-        
         public int getMarks() { return marks; }
         public void setMarks(int marks) { this.marks = marks; }
     }
