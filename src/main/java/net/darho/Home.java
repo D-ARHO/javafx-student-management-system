@@ -1,6 +1,5 @@
 package net.darho;
 
-import javafx.animation.PauseTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -10,21 +9,24 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.util.Duration;
 import java.sql.*;
+import java.util.Comparator;
+import java.util.Optional;
+import java.util.regex.Pattern;
 
 public class Home {
 
     private final App app;
     private TableView<Student> table;
-    private TextField nameField, emailField, searchField;
+    private TextField nameField, emailField, searchField, marksField;
     private ComboBox<String> courseCombo;
-    private Slider marksSlider;
-    private Label marksLabel, statusLabel;
+    private Label statusLabel, countLabel, welcomeLabel;
     private ObservableList<Student> studentList = FXCollections.observableArrayList();
     private Student selectedStudent = null;
-    private Label countLabel;
-    private Label welcomeLabel;
+    private Button addBtn;
+
+    // Button Style Constant (Steel Blue)
+    private final String BLUE_BUTTON_STYLE = "-fx-background-color: #4682B4; -fx-text-fill: steel blue; -fx-font-weight: bold; -fx-cursor: hand;";
 
     public Home(App app) {
         this.app = app;
@@ -41,13 +43,11 @@ public class Home {
             while (rs.next()) {
                 studentList.add(new Student(
                     rs.getInt("id"),
-                    rs.getInt("user_id"),
-                    rs.getString("full_name"),
-                    rs.getString("email"),
-                    rs.getString("course"),
-                    rs.getInt("marks")
+                    rs.getString("full_name"), rs.getString("email"),
+                    rs.getString("course"), rs.getInt("marks")
                 ));
             }
+            if (countLabel != null) countLabel.setText("Total Students: " + studentList.size());
         } catch (SQLException e) {
             showAlert("Database Error", "Failed to load students: " + e.getMessage());
         }
@@ -59,81 +59,80 @@ public class Home {
 
         VBox topSection = new VBox();
         welcomeLabel = new Label("Welcome, " + Login.currentUserName + "!");
-        welcomeLabel.setStyle("-fx-text-fill: white; -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 10 20 0 20;");
-        topSection.getChildren().addAll(welcomeLabel, createMenuBar());
+        welcomeLabel.setStyle("-fx-text-fill: #4682B4; -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 10 20 0 20;");
+        topSection.getChildren().addAll(createMenuBar(), welcomeLabel);
         root.setTop(topSection);
 
-        VBox mainContent = createManagementContent();
-        ScrollPane scrollPane = new ScrollPane(mainContent);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setFitToHeight(true);
-        scrollPane.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
-        
-        root.setCenter(scrollPane);
+        HBox mainLayout = new HBox(20);
+        mainLayout.setPadding(new Insets(20));
+        mainLayout.setAlignment(Pos.TOP_CENTER);
+
+        VBox inputSection = createInputSection();
+        VBox displaySection = createDisplaySection();
+
+        inputSection.setMinWidth(350);
+        HBox.setHgrow(displaySection, Priority.ALWAYS);
+
+        mainLayout.getChildren().addAll(inputSection, displaySection);
+        root.setCenter(mainLayout);
         root.setBottom(createStatusBar());
 
         return root;
     }
 
-    private VBox createManagementContent() {
-        VBox container = new VBox(20);
-        container.setPadding(new Insets(20));
-        container.setAlignment(Pos.TOP_CENTER);
-
-        HBox mainLayout = new HBox(20);
-        mainLayout.setAlignment(Pos.TOP_CENTER);
-
-        VBox inputSection = createInputSection();
-        inputSection.setMinWidth(350);
-        inputSection.setPrefWidth(350);
-        
-        VBox displaySection = createDisplaySection();
-        HBox.setHgrow(displaySection, Priority.ALWAYS);
-
-        mainLayout.getChildren().addAll(inputSection, displaySection);
-        container.getChildren().add(mainLayout);
-        VBox.setVgrow(mainLayout, Priority.ALWAYS);
-
-        return container;
-    }
-
     private VBox createInputSection() {
         VBox inputSection = new VBox(15);
         inputSection.setPadding(new Insets(25));
-        inputSection.getStyleClass().add("glass-card");
+        inputSection.setStyle("-fx-background-color: rgba(255,255,255,0.1); -fx-background-radius: 15;");
 
         Label titleLabel = new Label("Student Details");
-        titleLabel.getStyleClass().add("section-title");
+        titleLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #4682B4;");
 
         nameField = new TextField(); nameField.setPromptText("Enter full name");
         emailField = new TextField(); emailField.setPromptText("Enter email");
         
         courseCombo = new ComboBox<>(FXCollections.observableArrayList(
-            "Computer Science (CSE)", "Information Technology (IT)", "Software Engineering", "Data Science", "Cybersecurity"
+            "Computer Science (CSE)", "Information Technology (IT)", "Business IT (BIT)",
+            "Software Engineering", "Data Science", "Cybersecurity"
         ));
+        courseCombo.setPromptText("Select Course");
         courseCombo.setMaxWidth(Double.MAX_VALUE);
 
-        marksSlider = new Slider(0, 100, 50);
-        marksLabel = new Label("50");
-        marksSlider.valueProperty().addListener((obs, old, newVal) -> marksLabel.setText(String.valueOf(newVal.intValue())));
-        HBox marksBox = new HBox(10, marksSlider, marksLabel);
+        marksField = new TextField();
+        marksField.setPromptText("Marks (0 - 100)");
+        marksField.textProperty().addListener((obs, old, newValue) -> {
+            if (!newValue.matches("\\d*")) marksField.setText(newValue.replaceAll("[^\\d]", ""));
+            if (!marksField.getText().isEmpty() && Integer.parseInt(marksField.getText()) > 100) marksField.setText("100");
+        });
 
-        Button addBtn = new Button("➕ ADD STUDENT");
+        addBtn = new Button("➕ ADD STUDENT");
+        addBtn.setStyle(BLUE_BUTTON_STYLE);
         addBtn.setMaxWidth(Double.MAX_VALUE);
-        addBtn.getStyleClass().add("primary-button");
+        addBtn.setDisable(true); 
         addBtn.setOnAction(e -> addStudent());
 
+        Runnable validate = () -> {
+            boolean nameValid = nameField.getText().trim().length() >= 2;
+            boolean emailValid = validateEmail(emailField.getText().trim());
+            boolean courseValid = courseCombo.getValue() != null;
+            boolean marksValid = !marksField.getText().isEmpty();
+            addBtn.setDisable(!(nameValid && emailValid && courseValid && marksValid));
+        };
+
+        nameField.textProperty().addListener((o, old, n) -> validate.run());
+        emailField.textProperty().addListener((o, old, n) -> validate.run());
+        marksField.textProperty().addListener((o, old, n) -> validate.run());
+        courseCombo.valueProperty().addListener((o, old, n) -> validate.run());
+
         Button updateBtn = new Button("✏️ UPDATE");
-        updateBtn.getStyleClass().add("update-button");
+        updateBtn.setStyle(BLUE_BUTTON_STYLE);
         Button deleteBtn = new Button("🗑️ DELETE");
-        deleteBtn.getStyleClass().add("delete-button");
+        deleteBtn.setStyle(BLUE_BUTTON_STYLE);
         
-        updateBtn.setMaxWidth(Double.MAX_VALUE);
-        deleteBtn.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(updateBtn, Priority.ALWAYS);
-        HBox.setHgrow(deleteBtn, Priority.ALWAYS);
         HBox actionButtons = new HBox(10, updateBtn, deleteBtn);
-        
+        updateBtn.setMaxWidth(Double.MAX_VALUE); deleteBtn.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(updateBtn, Priority.ALWAYS); HBox.setHgrow(deleteBtn, Priority.ALWAYS);
+
         updateBtn.setOnAction(e -> updateStudent());
         deleteBtn.setOnAction(e -> deleteStudent());
 
@@ -142,7 +141,7 @@ public class Home {
             new Label("Full Name:"), nameField,
             new Label("Email:"), emailField,
             new Label("Course:"), courseCombo,
-            new Label("Marks:"), marksBox,
+            new Label("Marks:"), marksField,
             new Separator(), addBtn, actionButtons
         );
 
@@ -152,23 +151,39 @@ public class Home {
     private VBox createDisplaySection() {
         VBox displaySection = new VBox(15);
         displaySection.setPadding(new Insets(25));
-        displaySection.getStyleClass().add("glass-card");
+        displaySection.setStyle("-fx-background-color: rgba(255,255,255,0.1); -fx-background-radius: 15;");
 
         searchField = new TextField();
-        searchField.setPromptText("🔍 Search...");
-        HBox.setHgrow(searchField, Priority.ALWAYS);
+        searchField.setPromptText("🔍 Search students...");
+        Button showAllBtn = new Button("Show All");
+        showAllBtn.setOnAction(e -> { searchField.clear(); loadStudentsFromDatabase(); });
         
-        Button searchBtn = new Button("SEARCH");
-        searchBtn.setOnAction(e -> filterTable());
-        Button allBtn = new Button("SHOW ALL");
-        allBtn.setOnAction(e -> { searchField.clear(); filterTable(); });
+        HBox searchBar = new HBox(10, searchField, showAllBtn);
+        HBox.setHgrow(searchField, Priority.ALWAYS);
+        searchField.textProperty().addListener((obs, old, newVal) -> filterTable());
 
-        HBox searchBox = new HBox(10, searchField, searchBtn, allBtn);
+        CheckBox highAchievers = new CheckBox("High Achievers (>80)");
+        highAchievers.setStyle("-fx-text-fill: steel blue;");
+        highAchievers.setOnAction(e -> {
+            if(highAchievers.isSelected()) table.setItems(studentList.filtered(s -> s.getMarks() > 80));
+            else table.setItems(studentList);
+        });
 
+        ToggleGroup sortGroup = new ToggleGroup();
+        RadioButton sortName = new RadioButton("Sort Name");
+        RadioButton sortMarks = new RadioButton("Sort Marks");
+        sortName.setToggleGroup(sortGroup); sortMarks.setToggleGroup(sortGroup);
+        sortName.setStyle("-fx-text-fill: steel blue;"); sortMarks.setStyle("-fx-text-fill: steel blue;");
+
+        sortName.setOnAction(e -> studentList.sort(Comparator.comparing(Student::getName)));
+        sortMarks.setOnAction(e -> studentList.sort(Comparator.comparingInt(Student::getMarks).reversed()));
+
+        HBox filterBox = new HBox(15, highAchievers, sortName, sortMarks);
+        
         table = createTable();
         VBox.setVgrow(table, Priority.ALWAYS);
 
-        displaySection.getChildren().addAll(searchBox, table);
+        displaySection.getChildren().addAll(new Label("Student Records"), searchBar, filterBox, table);
         return displaySection;
     }
 
@@ -179,193 +194,187 @@ public class Home {
 
         TableColumn<Student, Integer> colId = new TableColumn<>("ID");
         colId.setCellValueFactory(new PropertyValueFactory<>("id"));
-        colId.setMaxWidth(50);
-
         TableColumn<Student, String> colName = new TableColumn<>("Name");
         colName.setCellValueFactory(new PropertyValueFactory<>("name"));
-
         TableColumn<Student, String> colEmail = new TableColumn<>("Email");
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
-
+        TableColumn<Student, String> colCourse = new TableColumn<>("Course");
+        colCourse.setCellValueFactory(new PropertyValueFactory<>("course"));
         TableColumn<Student, Integer> colMarks = new TableColumn<>("Marks");
         colMarks.setCellValueFactory(new PropertyValueFactory<>("marks"));
+        TableColumn<Student, String> colGrade = new TableColumn<>("Grade");
+        colGrade.setCellValueFactory(cell -> javafx.beans.binding.Bindings.createStringBinding(() -> calculateGrade(cell.getValue().getMarks())));
 
-        table.getColumns().addAll(colId, colName, colEmail, colMarks);
+        table.getColumns().addAll(colId, colName, colEmail, colCourse, colMarks, colGrade);
         table.setItems(studentList);
-        
-        table.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
-            selectedStudent = selected;
-            if (selected != null) populateFields(selected);
-        });
 
+        table.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
+            if (selected != null) {
+                selectedStudent = selected;
+                nameField.setText(selected.getName());
+                emailField.setText(selected.getEmail());
+                courseCombo.setValue(selected.getCourse());
+                marksField.setText(String.valueOf(selected.getMarks()));
+            }
+        });
         return table;
     }
 
-    private void addStudent() {
-        if (validateInputs()) {
-            String name = capitalizeName(nameField.getText());
-            String email = emailField.getText().toLowerCase();
-            String course = courseCombo.getValue();
-            int marks = (int) marksSlider.getValue();
+    private String calculateGrade(int marks) {
+        if (marks >= 90) return "A+";
+        else if (marks >= 70) return "B";
+        else if (marks >= 50) return "C";
+        else return "F";
+    }
 
-            Student newStudent = new Student(0, Login.currentUserId, name, email, course, marks);
-            saveStudentToDatabase(newStudent);
-            
-            if (newStudent.getId() > 0) {
-                studentList.add(newStudent);
-                clearFields();
-                updateStatus("Student added!");
-                updateStatistics();
-            }
+    private String capitalizeName(String name) {
+        if (name == null || name.isEmpty()) return "";
+        String[] words = name.trim().split("\\s+");
+        StringBuilder res = new StringBuilder();
+        for (String w : words) {
+            if (!w.isEmpty()) res.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1).toLowerCase()).append(" ");
         }
+        return res.toString().trim();
+    }
+
+    private boolean validateEmail(String email) {
+        return Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$").matcher(email).matches();
+    }
+
+    private void addStudent() {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String sql = "INSERT INTO students (user_id, full_name, email, course, marks) VALUES (?, ?, ?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, Login.currentUserId);
+            pstmt.setString(2, capitalizeName(nameField.getText()));
+            pstmt.setString(3, emailField.getText().toLowerCase());
+            pstmt.setString(4, courseCombo.getValue());
+            pstmt.setInt(5, Integer.parseInt(marksField.getText()));
+            pstmt.executeUpdate();
+            
+            loadStudentsFromDatabase();
+            clearFields();
+            showAlert("Success", "🎉 Student added successfully!");
+        } catch (SQLException e) { showAlert("Database Error", e.getMessage()); }
     }
 
     private void updateStudent() {
-        if (selectedStudent != null && validateInputs()) {
-            selectedStudent.setName(capitalizeName(nameField.getText()));
-            selectedStudent.setEmail(emailField.getText().toLowerCase());
-            selectedStudent.setCourse(courseCombo.getValue());
-            selectedStudent.setMarks((int) marksSlider.getValue());
-            
-            updateStudentInDatabase(selectedStudent);
-            table.refresh();
-            clearFields();
-            updateStatus("Student updated!");
-        } else {
-            showAlert("Selection Required", "Please select a student first.");
+        if (selectedStudent == null) {
+            showAlert("No Selection", "Please select a student from the table first.");
+            return;
         }
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String sql = "UPDATE students SET full_name=?, email=?, course=?, marks=? WHERE id=?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, capitalizeName(nameField.getText()));
+            pstmt.setString(2, emailField.getText());
+            pstmt.setString(3, courseCombo.getValue());
+            pstmt.setInt(4, Integer.parseInt(marksField.getText()));
+            pstmt.setInt(5, selectedStudent.getId());
+            pstmt.executeUpdate();
+            
+            loadStudentsFromDatabase();
+            clearFields();
+            showAlert("Updated", "✏️ Student information updated!");
+        } catch (SQLException e) { showAlert("Error", e.getMessage()); }
     }
 
     private void deleteStudent() {
-        if (selectedStudent != null) {
-            deleteStudentFromDatabase(selectedStudent.getId());
-            studentList.remove(selectedStudent);
-            clearFields();
-            updateStatus("Student deleted!");
-            updateStatistics();
+        if (selectedStudent == null) {
+            showAlert("No Selection", "Please select a student from the table first.");
+            return;
         }
-    }
 
-    private void saveStudentToDatabase(Student student) {
-        String sql = "INSERT INTO students (user_id, full_name, email, course, marks) VALUES (?, ?, ?, ?, ?)";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            pstmt.setInt(1, Login.currentUserId);
-            pstmt.setString(2, student.getName());
-            pstmt.setString(3, student.getEmail());
-            pstmt.setString(4, student.getCourse());
-            pstmt.setInt(5, student.getMarks());
-            pstmt.executeUpdate();
-            ResultSet rs = pstmt.getGeneratedKeys();
-            if (rs.next()) student.setId(rs.getInt(1));
-        } catch (SQLException e) { showAlert("Error", e.getMessage()); }
-    }
+        // --- NEW CONFIRMATION DIALOG ---
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Confirm Delete");
+        confirm.setHeaderText("Delete Student: " + selectedStudent.getName());
+        confirm.setContentText("Are you sure you want to delete this record? This action cannot be undone.");
 
-    private void updateStudentInDatabase(Student student) {
-        String sql = "UPDATE students SET full_name=?, email=?, course=?, marks=? WHERE id=? AND user_id=?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, student.getName());
-            pstmt.setString(2, student.getEmail());
-            pstmt.setString(3, student.getCourse());
-            pstmt.setInt(4, student.getMarks());
-            pstmt.setInt(5, student.getId());
-            pstmt.setInt(6, Login.currentUserId);
-            pstmt.executeUpdate();
-        } catch (SQLException e) { showAlert("Error", e.getMessage()); }
-    }
-
-    private void deleteStudentFromDatabase(int id) {
-        String sql = "DELETE FROM students WHERE id=? AND user_id=?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setInt(1, id);
-            pstmt.setInt(2, Login.currentUserId);
-            pstmt.executeUpdate();
-        } catch (SQLException e) { showAlert("Error", e.getMessage()); }
+        Optional<ButtonType> result = confirm.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                String sql = "DELETE FROM students WHERE id=?";
+                PreparedStatement pstmt = conn.prepareStatement(sql);
+                pstmt.setInt(1, selectedStudent.getId());
+                pstmt.executeUpdate();
+                
+                loadStudentsFromDatabase();
+                clearFields();
+                showAlert("Deleted", "🗑️ Student has been removed.");
+            } catch (SQLException e) { showAlert("Error", e.getMessage()); }
+        }
     }
 
     private void filterTable() {
-        FilteredList<Student> filteredData = new FilteredList<>(studentList, p -> true);
-        filteredData.setPredicate(s -> {
-            String search = searchField.getText().toLowerCase();
-            return search.isEmpty() || s.getName().toLowerCase().contains(search) || s.getEmail().toLowerCase().contains(search);
-        });
+        String filter = searchField.getText().toLowerCase();
+        FilteredList<Student> filteredData = new FilteredList<>(studentList, s -> 
+            s.getName().toLowerCase().contains(filter) || s.getEmail().toLowerCase().contains(filter)
+        );
         table.setItems(filteredData);
     }
 
-    private boolean validateInputs() {
-        if (nameField.getText().isEmpty() || emailField.getText().isEmpty() || courseCombo.getValue() == null) {
-            showAlert("Validation Error", "All fields are required!");
-            return false;
-        }
-        return true;
+    private MenuBar createMenuBar() {
+        MenuBar menuBar = new MenuBar();
+        Menu fileMenu = new Menu("File");
+        MenuItem logoutItem = new MenuItem("Logout");
+        logoutItem.setOnAction(e -> app.showLogin());
+        MenuItem exitItem = new MenuItem("Exit");
+        exitItem.setOnAction(e -> System.exit(0));
+        fileMenu.getItems().addAll(logoutItem, exitItem);
+
+        Menu studentMenu = new Menu("Students");
+        MenuItem addItem = new MenuItem("Add"); addItem.setOnAction(e -> addStudent());
+        MenuItem updateItem = new MenuItem("Update"); updateItem.setOnAction(e -> updateStudent());
+        MenuItem deleteItem = new MenuItem("Delete"); deleteItem.setOnAction(e -> deleteStudent());
+        studentMenu.getItems().addAll(addItem, updateItem, deleteItem);
+
+        Menu helpMenu = new Menu("Help");
+        MenuItem aboutItem = new MenuItem("About");
+        aboutItem.setOnAction(e -> showAlert("About", "Student Management System v1.0\nDeveloped by net.darho"));
+        helpMenu.getItems().addAll(aboutItem);
+
+        menuBar.getMenus().addAll(fileMenu, studentMenu, helpMenu);
+        return menuBar;
     }
 
-    private void populateFields(Student s) {
-        nameField.setText(s.getName());
-        emailField.setText(s.getEmail());
-        courseCombo.setValue(s.getCourse());
-        marksSlider.setValue(s.getMarks());
+    private HBox createStatusBar() {
+        statusLabel = new Label("Ready");
+        statusLabel.setStyle("-fx-text-fill: steel blue;");
+        countLabel = new Label("Total Students: 0");
+        countLabel.setStyle("-fx-text-fill: steel blue;");
+        HBox statusBar = new HBox(20, statusLabel, new Pane(), countLabel);
+        HBox.setHgrow(statusBar.getChildren().get(1), Priority.ALWAYS);
+        statusBar.setPadding(new Insets(5, 20, 5, 20));
+        statusBar.setStyle("-fx-background-color: #2c3e50;");
+        return statusBar;
     }
 
     private void clearFields() {
-        nameField.clear(); emailField.clear(); courseCombo.setValue(null); marksSlider.setValue(50); selectedStudent = null;
+        nameField.clear(); emailField.clear(); marksField.clear();
+        courseCombo.setValue(null);
+        selectedStudent = null;
+        addBtn.setDisable(true);
     }
 
     private void showAlert(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title); alert.setHeaderText(null); alert.setContentText(content); alert.showAndWait();
-    }
-
-    private void updateStatus(String msg) {
-        statusLabel.setText(msg);
-        PauseTransition p = new PauseTransition(Duration.seconds(3));
-        p.setOnFinished(e -> statusLabel.setText("Ready"));
-        p.play();
-    }
-
-    private void updateStatistics() { countLabel.setText("Total: " + studentList.size()); }
-
-    private MenuBar createMenuBar() { 
-        MenuBar mb = new MenuBar(); 
-        Menu file = new Menu("File");
-        MenuItem logout = new MenuItem("Logout");
-        logout.setOnAction(e -> app.showLogin());
-        file.getItems().add(logout);
-        mb.getMenus().add(file);
-        return mb; 
-    }
-
-    private HBox createStatusBar() {
-        HBox sb = new HBox(10); sb.setPadding(new Insets(5));
-        statusLabel = new Label("Ready");
-        countLabel = new Label("Total: " + studentList.size());
-        sb.getChildren().addAll(statusLabel, new Pane(), countLabel);
-        HBox.setHgrow(sb.getChildren().get(1), Priority.ALWAYS);
-        return sb;
-    }
-
-    private String capitalizeName(String name) {
-        if (name == null || name.isEmpty()) return name;
-        return name.substring(0, 1).toUpperCase() + name.substring(1);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait(); // showAndWait ensures the user sees it before proceeding
     }
 
     public static class Student {
         private int id, marks;
         private String name, email, course;
-        public Student(int id, int userId, String name, String email, String course, int marks) {
+        public Student(int id, String name, String email, String course, int marks) {
             this.id = id; this.name = name; this.email = email; this.course = course; this.marks = marks;
         }
         public int getId() { return id; }
-        public void setId(int id) { this.id = id; }
         public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
         public String getCourse() { return course; }
-        public void setCourse(String course) { this.course = course; }
         public int getMarks() { return marks; }
-        public void setMarks(int marks) { this.marks = marks; }
     }
 }
