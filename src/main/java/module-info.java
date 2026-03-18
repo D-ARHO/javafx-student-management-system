@@ -4,6 +4,7 @@ module net.darho {
     requires transitive javafx.graphics;
     requires transitive java.sql;
     requires org.postgresql.jdbc;
+    requires java.prefs;
 
     
     opens net.darho to javafx.graphics, javafx.fxml;

@@ -41,6 +41,14 @@ public class App extends Application {
         primaryStage.setMaximized(false);
         primaryStage.centerOnScreen();
     }
+
+    // --- ADDED METHOD FOR FORGOT PASSWORD ---
+    public void showForgotPassword() {
+        ForgotPassword forgot = new ForgotPassword(this);
+        updateScene(new Scene(forgot.getView()));
+        primaryStage.setMaximized(false);
+        primaryStage.centerOnScreen();
+    }
     
     public void showHome() {
         Home home = new Home(this);
@@ -55,9 +63,16 @@ public class App extends Application {
     }
 
     private void updateScene(Scene scene) {
-        String css = getClass().getResource("/net/darho/stylee.css").toExternalForm();
-        if (css != null) {
-            scene.getStylesheets().add(css);
+        try {
+            // Updated check: Ensure the resource exists before calling toExternalForm()
+            var resource = getClass().getResource("/net/darho/stylee.css");
+            if (resource != null) {
+                scene.getStylesheets().add(resource.toExternalForm());
+            } else {
+                System.out.println("Warning: CSS file 'stylee.css' not found in /net/darho/");
+            }
+        } catch (Exception e) {
+            System.out.println("Error loading CSS: " + e.getMessage());
         }
         primaryStage.setScene(scene);
     }
